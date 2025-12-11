@@ -3,22 +3,28 @@ pipeline {
 
   environment {
     TARGET_HOST    = '192.168.199.253'
-    TARGET_USER    = 'ununtu'
+    TARGET_USER    = 'ubuntu'
     SSH_KEY        = '/home/ubuntu/.ssh/mac'
+
     IMAGE_NAME     = 'myorg/myapp'
-    IMAGE_TAG      = '14'
+    IMAGE_TAG      = '16'  // или номер последнего успешного билда my-java-pipeline
     CONTAINER_NAME = 'myapp'
-    BUILD_JOB_WS   = '/home/ubuntu/agent/workspace/my-java-pipeline'
   }
 
   stages {
-    stage('Get Artifact from build workspace') {
+    stage('Copy Artifact from Build Job') {
       steps {
-        sh """
-          ls -lh ${BUILD_JOB_WS}
-          cp ${BUILD_JOB_WS}/myorg_myapp_${IMAGE_TAG}.tar .
-          ls -lh
-        """
+        script {
+          // Копируем архивированный артефакт из последнего успешного билда my-java-pipeline
+          copyArtifacts(
+            projectName: 'my-java-pipeline',
+            filter: '*.tar',
+            target: '.',
+            fingerprintArtifacts: true,
+            selector: lastSuccessful()
+          )
+          sh 'ls -lh *.tar'
+        }
       }
     }
 
@@ -40,25 +46,21 @@ pipeline {
             'bash -s' <<'ENDSSH'
 
           set -e
-
           IMAGE_NAME='${IMAGE_NAME}'
           IMAGE_TAG='${IMAGE_TAG}'
           CONTAINER_NAME='${CONTAINER_NAME}'
 
-          # Загружаем образ
           docker load -i /tmp/myorg_myapp_${IMAGE_TAG}.tar
 
-          # Останавливаем и удаляем старый контейнер (если есть)
-          docker stop ${CONTAINER_NAME} 2>/dev/null || true
-          docker rm ${CONTAINER_NAME} 2>/dev/null || true
+          docker stop \${CONTAINER_NAME} 2>/dev/null || true
+          docker rm \${CONTAINER_NAME} 2>/dev/null || true
 
-          # Запускаем новый контейнер
           docker run -d \\
-            --name ${CONTAINER_NAME} \\
+            --name \${CONTAINER_NAME} \\
             -p 8080:8080 \\
-            ${IMAGE_NAME}:${IMAGE_TAG}
+            \${IMAGE_NAME}:\${IMAGE_TAG}
 
-          docker ps | grep ${CONTAINER_NAME} || (echo "Container not running" && exit 1)
+          docker ps | grep \${CONTAINER_NAME} || (echo "Container not running" && exit 1)
 
           echo "Deployment complete. App running on port 8080."
 ENDSSH
