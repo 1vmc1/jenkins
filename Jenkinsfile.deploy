@@ -4,7 +4,7 @@ pipeline {
   environment {
     TARGET_HOST    = '192.168.199.253'
     TARGET_USER    = 'ubuntu'
-    SSH_KEY        = '/home/ubuntu/.ssh/mac'
+    SSH_KEY        = '/home/ubuntu/.ssh/vmc'
 
     IMAGE_NAME     = 'myorg/myapp'
     IMAGE_TAG      = '15'  // или номер последнего успешного билда my-java-pipeline
