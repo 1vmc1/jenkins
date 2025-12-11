@@ -1,0 +1,78 @@
+pipeline {
+  agent { label 'vmc2' }
+
+  environment {
+    TARGET_HOST    = '192.168.199.253'
+    TARGET_USER    = 'ubuntu'
+    SSH_KEY        = '/home/ubuntu/.ssh/mac'        // путь к ключу на агенте
+    IMAGE_NAME     = 'myorg/myapp'
+    IMAGE_TAG      = '14'
+    CONTAINER_NAME = 'myapp'
+  }
+
+  stages {
+    stage('Copy Artifact from Build Job') {
+      steps {
+        script {
+          copyArtifacts(
+            projectName: 'my-java-pipeline',
+            filter: '*.tar',
+            target: '.',
+            fingerprintArtifacts: true,
+            selector: lastSuccessful()
+          )
+          sh 'ls -lh *.tar'
+        }
+      }
+    }
+
+    stage('Transfer Image to Target Server') {
+      steps {
+        sh """
+          scp -i ${env.SSH_KEY} -o StrictHostKeyChecking=no \\
+            myorg_myapp_${env.IMAGE_TAG}.tar \\
+            ${env.TARGET_USER}@${env.TARGET_HOST}:/tmp/
+        """
+      }
+    }
+
+    stage('Deploy on Target Server') {
+      steps {
+        sh """
+          ssh -i ${env.SSH_KEY} -o StrictHostKeyChecking=no \\
+            ${env.TARGET_USER}@${env.TARGET_HOST} \\
+            'bash -s' <<'ENDSSH'
+
+          set -e
+
+          # Загружаем образ
+          docker load -i /tmp/myorg_myapp_${IMAGE_TAG}.tar
+
+          # Останавливаем и удаляем старый контейнер (если есть)
+          docker stop ${CONTAINER_NAME} 2>/dev/null || true
+          docker rm ${CONTAINER_NAME} 2>/dev/null || true
+
+          # Запускаем новый контейнер
+          docker run -d \\
+            --name ${CONTAINER_NAME} \\
+            -p 8080:8080 \\
+            ${IMAGE_NAME}:${IMAGE_TAG}
+
+          docker ps | grep ${CONTAINER_NAME} || (echo "Container not running" && exit 1)
+
+          echo "Deployment complete. App running on port 8080."
+ENDSSH
+        """
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "Application deployed successfully to ${env.TARGET_HOST}:8080"
+    }
+    failure {
+      echo "Deployment failed. Check logs."
+    }
+  }
+}
