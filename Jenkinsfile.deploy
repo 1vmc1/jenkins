@@ -3,8 +3,8 @@ pipeline {
 
   environment {
     TARGET_HOST    = '192.168.199.253'
-    TARGET_USER    = 'ubuntu'
-    SSH_KEY        = '/home/ubuntu/.ssh/mac'        // путь к ключу на агенте
+    TARGET_USER    = 'ununtu'
+    SSH_KEY        = '/home/ubuntu/.ssh/mac'
     IMAGE_NAME     = 'myorg/myapp'
     IMAGE_TAG      = '14'
     CONTAINER_NAME = 'myapp'
@@ -14,12 +14,13 @@ pipeline {
     stage('Copy Artifact from Build Job') {
       steps {
         script {
+          // Правильный синтаксис для copyArtifacts
           copyArtifacts(
             projectName: 'my-java-pipeline',
             filter: '*.tar',
             target: '.',
             fingerprintArtifacts: true,
-            selector: lastSuccessful()
+            selector: specific('lastSuccessful')  // <-- исправлено
           )
           sh 'ls -lh *.tar'
         }
