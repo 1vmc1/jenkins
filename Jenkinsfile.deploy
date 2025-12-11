@@ -8,31 +8,26 @@ pipeline {
     IMAGE_NAME     = 'myorg/myapp'
     IMAGE_TAG      = '14'
     CONTAINER_NAME = 'myapp'
+    BUILD_JOB_WS   = '/home/ubuntu/agent/workspace/my-java-pipeline'
   }
 
   stages {
-    stage('Copy Artifact from Build Job') {
+    stage('Get Artifact from build workspace') {
       steps {
-        script {
-          // Правильный синтаксис для copyArtifacts
-          copyArtifacts(
-            projectName: 'my-java-pipeline',
-            filter: '*.tar',
-            target: '.',
-            fingerprintArtifacts: true,
-            selector: specific('lastSuccessful')  // <-- исправлено
-          )
-          sh 'ls -lh *.tar'
-        }
+        sh """
+          ls -lh ${BUILD_JOB_WS}
+          cp ${BUILD_JOB_WS}/myorg_myapp_${IMAGE_TAG}.tar .
+          ls -lh
+        """
       }
     }
 
     stage('Transfer Image to Target Server') {
       steps {
         sh """
-          scp -i ${env.SSH_KEY} -o StrictHostKeyChecking=no \\
-            myorg_myapp_${env.IMAGE_TAG}.tar \\
-            ${env.TARGET_USER}@${env.TARGET_HOST}:/tmp/
+          scp -i ${SSH_KEY} -o StrictHostKeyChecking=no \\
+            myorg_myapp_${IMAGE_TAG}.tar \\
+            ${TARGET_USER}@${TARGET_HOST}:/tmp/
         """
       }
     }
@@ -40,11 +35,15 @@ pipeline {
     stage('Deploy on Target Server') {
       steps {
         sh """
-          ssh -i ${env.SSH_KEY} -o StrictHostKeyChecking=no \\
-            ${env.TARGET_USER}@${env.TARGET_HOST} \\
+          ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no \\
+            ${TARGET_USER}@${TARGET_HOST} \\
             'bash -s' <<'ENDSSH'
 
           set -e
+
+          IMAGE_NAME='${IMAGE_NAME}'
+          IMAGE_TAG='${IMAGE_TAG}'
+          CONTAINER_NAME='${CONTAINER_NAME}'
 
           # Загружаем образ
           docker load -i /tmp/myorg_myapp_${IMAGE_TAG}.tar
@@ -70,7 +69,7 @@ ENDSSH
 
   post {
     success {
-      echo "Application deployed successfully to ${env.TARGET_HOST}:8080"
+      echo "Application deployed successfully to ${TARGET_HOST}:8080"
     }
     failure {
       echo "Deployment failed. Check logs."
